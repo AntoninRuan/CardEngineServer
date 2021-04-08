@@ -5,7 +5,7 @@ import java.util.ArrayList;
 
 public class Hand {
 
-    private final int id;
+    private int id;
 
     private String name;
     private ArrayList<Card> keys = new ArrayList<>();
@@ -19,8 +19,16 @@ public class Hand {
         return id;
     }
 
+    public void setId(int id) {
+        this.id = id;
+    }
+
     public String getName() {
         return name;
+    }
+
+    public ArrayList<Card> getCards() {
+        return keys;
     }
 
     public void add(Card card) {

@@ -1,5 +1,6 @@
 package fr.antoninruan.maoserver.model;
 
+import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 
 import java.util.ArrayList;
@@ -42,6 +43,17 @@ public class Deck {
 
     public static void put(Card card) {
         deck.add(card);
+    }
+
+    public static JsonArray toJsonArray() {
+        JsonArray deck = new JsonArray();
+        for (Card c : Deck.getCards()) {
+            JsonObject card = new JsonObject();
+            card.addProperty("value", c.getValue().toString());
+            card.addProperty("suit", c.getSuit().toString());
+            deck.add(card);
+        }
+        return deck;
     }
 
 }

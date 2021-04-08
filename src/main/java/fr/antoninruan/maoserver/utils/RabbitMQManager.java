@@ -33,6 +33,7 @@ public class RabbitMQManager {
         factory.setUsername(user);
         factory.setPassword(password);
         factory.setAutomaticRecoveryEnabled(true);
+        factory.setVirtualHost("card_engine");
         try {
             connection = factory.newConnection();
             channel = connection.createChannel();
@@ -45,11 +46,16 @@ public class RabbitMQManager {
             channel.queueDeclare(QUEUE_GAME_ACTION, true, false, false, null);
             channel.queueDeclare(RPC_QUEUE_CONNECTION, false, false, false, null);
             channel.queuePurge(RPC_QUEUE_CONNECTION);
+            channel.queuePurge(QUEUE_GAME_ACTION);
 
             listenGameActions();
             listenConnection();
+        } catch (AuthenticationFailureException e) {
+            e.printStackTrace();
+            System.exit(-1);
         } catch (TimeoutException | IOException e) {
             e.printStackTrace();
+            System.exit(-2);
         }
     }
 
@@ -96,14 +102,7 @@ public class RabbitMQManager {
                     JsonObject object = new JsonObject();
                     object.addProperty("id", hand.getId());
 
-                    JsonArray deck = new JsonArray();
-                    for (Card c : Deck.getCards()) {
-                        JsonObject card = new JsonObject();
-                        card.addProperty("value", c.getValue().toString());
-                        card.addProperty("suit", c.getSuit().toString());
-                        deck.add(card);
-                    }
-                    object.add("deck", deck);
+                    object.add("deck", Deck.toJsonArray());
 
                     JsonArray playedStack = new JsonArray();
                     for (Card c : PlayedStack.getCards()) {
@@ -116,7 +115,7 @@ public class RabbitMQManager {
 
                     JsonArray players = new JsonArray();
 
-                    for (Hand h : Main.getPlayers().values()) {
+                    for (Hand h : Main.getPlayers()) {
                         JsonObject player = new JsonObject();
                         player.addProperty("id", h.getId());
                         player.addProperty("name", h.getName());
@@ -126,7 +125,7 @@ public class RabbitMQManager {
                     object.add("players", players);
 
 
-                    Main.getPlayers().put(hand.getId(), hand);
+                    Main.getPlayers().add(hand);
 
                     response = object.toString();
                 }
@@ -228,14 +227,30 @@ public class RabbitMQManager {
                     }
                     JsonObject update = new JsonObject();
                     update.addProperty("type", "rollback");
-                    JsonArray deck = new JsonArray();
-                    for (Card c : Deck.getCards()) {
-                        JsonObject card = new JsonObject();
-                        card.addProperty("value", c.getValue().toString());
-                        card.addProperty("suit", c.getSuit().toString());
-                        deck.add(card);
+                    update.add("deck", Deck.toJsonArray());
+                    sendGameUpdates(update.toString());
+                } else if (type.equals("knock")) {
+                    sendGameUpdates(message.toString());
+                } else if (type.equals("rub")) {
+                    sendGameUpdates(message.toString());
+                } else if (type.equals("player_leave")) {
+                    int leaveId = message.get("id").getAsInt();
+                    Main.setLastPlayerId(Main.getLastPlayerId() - 1);
+                    Hand hand = Main.getPlayers().get(leaveId);
+                    for (Card card : new ArrayList<>(hand.getCards())) {
+                        hand.remove(card);
+                        Deck.put(card);
                     }
-                    update.add("deck", deck);
+                    Main.getPlayers().remove(leaveId);
+                    for (Hand h : Main.getPlayers()) {
+                        if (h.getId() > leaveId) {
+                            h.setId(h.getId() - 1);
+                        }
+                    }
+                    JsonObject update = new JsonObject();
+                    update.addProperty("type", "player_leave");
+                    update.addProperty("id", leaveId);
+                    update.add("deck", Deck.toJsonArray());
                     sendGameUpdates(update.toString());
                 }
 

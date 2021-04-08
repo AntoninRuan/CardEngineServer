@@ -9,8 +9,6 @@ import fr.antoninruan.maoserver.model.PlayedStack;
 import fr.antoninruan.maoserver.utils.RabbitMQManager;
 import org.apache.commons.cli.*;
 
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Scanner;
@@ -19,7 +17,7 @@ public class Main {
 
     private static int lastPlayerId;
 
-    private static HashMap<Integer, Hand> players = new HashMap<>();
+    private static ArrayList<Hand> players = new ArrayList<>();
 
     public static void main(String... args) {
 
@@ -58,7 +56,7 @@ public class Main {
             System.exit(0);
 
         } catch (ParseException e) {
-            log(e.getMessage());
+            System.out.println(e.getMessage());
             formatter.printHelp("utility-name", options);
 
             System.exit(0);
@@ -69,7 +67,7 @@ public class Main {
 
     public static void log(String message) {
         System.out.println("\r" + message);
-        System.out.print(">");
+        System.out.print("> ");
     }
 
     private static void startShell() {
@@ -78,7 +76,6 @@ public class Main {
         Scanner scanner = new Scanner(System.in);
         boolean stop = false;
         while (!stop) {
-            System.out.print(">");
             String line = scanner.nextLine();
             String[] command = line.split(" ");
             if(command[0].equals("stop")) {
@@ -90,11 +87,13 @@ public class Main {
                 Option deck = new Option("d", "deck", false, "Affiche l'état actuel de la pioche");
                 Option played = new Option("j", "played", false, "Affiche les cartes jouées");
                 Option all = new Option("a", "all", false, "Affiche tous les informations du jeu");
+                Option lastId = new Option("l", "last_id", false, "Affiche le prochain id à attribuer");
 
                 gameInfo.addOption(players);
                 gameInfo.addOption(deck);
                 gameInfo.addOption(played);
                 gameInfo.addOption(all);
+                gameInfo.addOption(lastId);
 
                 try {
                     CommandLine commandLine = parser.parse(gameInfo, command);
@@ -103,6 +102,7 @@ public class Main {
                         displayPlayers();
                         displayDeck();
                         displayPlayed();
+
                     } else {
                         if(commandLine.hasOption("d")) {
                             displayDeck();
@@ -112,9 +112,14 @@ public class Main {
                             displayPlayers();
                         }
                     }
+                    if(commandLine.hasOption("l")) {
+                        System.out.println("LastPlayerId=" + lastPlayerId);
+                    }
+
                 } catch (ParseException e) {
                     formatter.printHelp("utility-name", gameInfo);
                 }
+                System.out.print("> ");
             }
         }
     }
@@ -122,7 +127,7 @@ public class Main {
     private static void displayPlayers() {
         System.out.print("Player connected: ");
         JsonArray array = new JsonArray();
-        for (Hand h : Main.getPlayers().values()) {
+        for (Hand h : Main.getPlayers()) {
             JsonObject player = new JsonObject();
             player.addProperty("id", h.getId());
             player.addProperty("name", h.getName());
@@ -144,7 +149,7 @@ public class Main {
     }
 
     private static void displayPlayed() {
-        System.out.print("Player: ");
+        System.out.print("Played card: ");
         JsonArray playedStack = new JsonArray();
         for (Card c : PlayedStack.getCards()) {
             JsonObject card = new JsonObject();
@@ -155,8 +160,16 @@ public class Main {
         System.out.println(playedStack.toString());
     }
 
-    public static HashMap<Integer, Hand> getPlayers() {
+    public static ArrayList<Hand> getPlayers() {
         return players;
+    }
+
+    public static void setLastPlayerId(int lastPlayerId) {
+        Main.lastPlayerId = lastPlayerId;
+    }
+
+    public static int getLastPlayerId() {
+        return lastPlayerId;
     }
 
     public static int nextPlayerId() {
