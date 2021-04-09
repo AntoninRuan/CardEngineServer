@@ -119,6 +119,14 @@ public class RabbitMQManager {
                         JsonObject player = new JsonObject();
                         player.addProperty("id", h.getId());
                         player.addProperty("name", h.getName());
+                        JsonArray cards = new JsonArray();
+                        for (Card c : h.getCards()) {
+                            JsonObject card = new JsonObject();
+                            card.addProperty("value", c.getValue().toString());
+                            card.addProperty("suit", c.getSuit().toString());
+                            cards.add(card);
+                        }
+                        player.add("cards", cards);
                         players.add(player);
                     }
 
