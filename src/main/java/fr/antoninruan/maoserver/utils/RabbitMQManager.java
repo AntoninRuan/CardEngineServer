@@ -6,9 +6,9 @@ import com.google.gson.JsonParser;
 import com.rabbitmq.client.*;
 import fr.antoninruan.maoserver.Main;
 import fr.antoninruan.maoserver.model.Card;
-import fr.antoninruan.maoserver.model.Deck;
-import fr.antoninruan.maoserver.model.Hand;
-import fr.antoninruan.maoserver.model.PlayedStack;
+import fr.antoninruan.maoserver.model.cardcontainer.Deck;
+import fr.antoninruan.maoserver.model.cardcontainer.Hand;
+import fr.antoninruan.maoserver.model.cardcontainer.PlayedStack;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -22,6 +22,7 @@ public class RabbitMQManager {
     private static final String EXCHANGE_GAME_UPDATES = "game_updates";
     private static final String QUEUE_GAME_ACTION = "game_actions";
     private static final String RPC_QUEUE_CONNECTION = "connection_queue";
+    private static final String RPC_QUEUE_SYNCHRONIZATION = "synchronization_queue";
 
     private static Channel channel;
     private static Connection connection;
@@ -45,10 +46,13 @@ public class RabbitMQManager {
             channel.exchangeDeclare(EXCHANGE_GAME_UPDATES, "fanout");
             channel.queueDeclare(QUEUE_GAME_ACTION, true, false, false, null);
             channel.queueDeclare(RPC_QUEUE_CONNECTION, false, false, false, null);
+            channel.queueDeclare(RPC_QUEUE_SYNCHRONIZATION, false, false, false, null);
+            channel.queuePurge(RPC_QUEUE_SYNCHRONIZATION);
             channel.queuePurge(RPC_QUEUE_CONNECTION);
             channel.queuePurge(QUEUE_GAME_ACTION);
 
             listenGameActions();
+//            listenSyncRequest();
             listenConnection();
         } catch (AuthenticationFailureException e) {
             e.printStackTrace();
@@ -68,9 +72,16 @@ public class RabbitMQManager {
         }
     }
 
-    public static void sendGameUpdates(String update) throws IOException {
+    public static void sendGameUpdates(JsonObject update) throws IOException {
+        JsonObject hashes = new JsonObject();
+        hashes.addProperty("deck", Main.getDeck().hashCode());
+        hashes.addProperty("played_stack", Main.getPlayedStack().hashCode());
+        for(Hand h : Main.getPlayers()) {
+            hashes.addProperty(Integer.toString(h.getId()), h.hashCode());
+        }
+        update.add("hashes", hashes);
         Main.log("Sending: " + update);
-        channel.basicPublish(EXCHANGE_GAME_UPDATES, "", null, update.getBytes(StandardCharsets.UTF_8));
+        channel.basicPublish(EXCHANGE_GAME_UPDATES, "", null, update.toString().getBytes(StandardCharsets.UTF_8));
     }
 
     private static void listenConnection() throws IOException {
@@ -84,7 +95,7 @@ public class RabbitMQManager {
             String response = "";
             String broadcast = "";
             try {
-                String name = new String(delivery.getBody(), StandardCharsets.UTF_8); // {name}
+                String name = new String(delivery.getBody(), StandardCharsets.UTF_8);
 
                 if(Main.getPlayers().size() > 7) {
                     response = "{\"id\":-1}";
@@ -97,59 +108,25 @@ public class RabbitMQManager {
                     newPlayer.addProperty("id", hand.getId());
                     broadcast = newPlayer.toString();
 
-//                System.out.println("id=" + hand.getId());
-
-                    JsonObject object = new JsonObject();
+                    JsonObject object = Main.getGameState();
                     object.addProperty("id", hand.getId());
-
-                    object.add("deck", Deck.toJsonArray());
-
-                    JsonArray playedStack = new JsonArray();
-                    for (Card c : PlayedStack.getCards()) {
-                        JsonObject card = new JsonObject();
-                        card.addProperty("value", c.getValue().toString());
-                        card.addProperty("suit", c.getSuit().toString());
-                        playedStack.add(card);
-                    }
-                    object.add("played_stack", playedStack);
-
-                    JsonArray players = new JsonArray();
-
-                    for (Hand h : Main.getPlayers()) {
-                        JsonObject player = new JsonObject();
-                        player.addProperty("id", h.getId());
-                        player.addProperty("name", h.getName());
-                        JsonArray cards = new JsonArray();
-                        for (Card c : h.getCards()) {
-                            JsonObject card = new JsonObject();
-                            card.addProperty("value", c.getValue().toString());
-                            card.addProperty("suit", c.getSuit().toString());
-                            cards.add(card);
-                        }
-                        player.add("cards", cards);
-                        players.add(player);
-                    }
-
-                    object.add("players", players);
-
 
                     Main.getPlayers().add(hand);
 
                     response = object.toString();
                 }
 
-//                System.out.println(response.toString());
             } catch (RuntimeException e) {
                 e.printStackTrace();
             } finally {
                 Main.log("Sending: " + response);
                 channel.basicPublish("", delivery.getProperties().getReplyTo(), replyProps, response.getBytes(StandardCharsets.UTF_8));
-//                System.out.println("sending: " + response);
                 channel.basicAck(delivery.getEnvelope().getDeliveryTag(), false);
                 final ScheduledThreadPoolExecutor executor = new ScheduledThreadPoolExecutor(1);
                 final String finalBroadcast = broadcast;
                 executor.schedule(() -> {
                     try {
+                        System.out.println("Sending: " + finalBroadcast);
                         channel.basicPublish(EXCHANGE_GAME_UPDATES, "new_player", null, finalBroadcast.getBytes(StandardCharsets.UTF_8));
                     } catch (IOException e) {
                         e.printStackTrace();
@@ -172,94 +149,78 @@ public class RabbitMQManager {
                     String dest = message.get("destination").getAsString();
                     String from = message.get("source").getAsString();
                     if(from.equals("deck")) {
-                        Card card = Deck.draw();
+                        Card card = Main.getDeck().draw();
                         if(card != null) {
                             if(dest.equals("playedStack")) {
-                                PlayedStack.addCard(card);
+                                Main.getPlayedStack().add(card);
                             } else {
                                 int destId = Integer.parseInt(dest);
                                 Hand hand = Main.getPlayers().get(destId);
                                 hand.add(card);
                             }
-                            sendGameUpdates(message.toString());
+                            sendGameUpdates(message);
                         }
                     } else if (from.equals("playedStack")) {
-                        Card card = PlayedStack.pickLastCard();
+                        Card card = Main.getPlayedStack().pickLastCard();
                         if(card != null) {
                             if(dest.equals("deck")) {
-                                Deck.put(card);
+                                Main.getDeck().put(card);
                             } else {
                                 int destId = Integer.parseInt(dest);
                                 Hand hand = Main.getPlayers().get(destId);
                                 hand.add(card);
                             }
-                            sendGameUpdates(message.toString());
+                            sendGameUpdates(message);
                         }
                     } else {
                         Hand hand = Main.getPlayers().get(Integer.parseInt(from));
                         Card card = hand.getCard(message.get("card_id").getAsInt());
                         if(dest.equals("deck")) {
-                            Deck.put(card);
-                            sendGameUpdates(message.toString());
+                            Main.getDeck().put(card);
+                            sendGameUpdates(message);
                             hand.remove(card);
                         } else if (dest.equals("playedStack")) {
-                            PlayedStack.addCard(card);
-                            sendGameUpdates(message.toString());
+                            Main.getPlayedStack().add(card);
+                            sendGameUpdates(message);
                             hand.remove(card);
                         } else {
                             int destId = Integer.parseInt(dest);
                             Hand target = Main.getPlayers().get(destId);
                             target.add(card);
-                            sendGameUpdates(message.toString());
+                            sendGameUpdates(message);
                             hand.remove(card);
                         }
                     }
                 } else if(type.equals("shuffle")) {
-                    Deck.shuffle();
+                    Main.getDeck().shuffle();
                     JsonObject update = new JsonObject();
                     update.addProperty("type", "shuffle");
                     JsonArray deck = new JsonArray();
-                    for (Card c : Deck.getCards()) {
+                    for (Card c : Main.getDeck().getCards()) {
                         JsonObject card = new JsonObject();
                         card.addProperty("value", c.getValue().toString());
                         card.addProperty("suit", c.getSuit().toString());
                         deck.add(card);
                     }
                     update.add("deck", deck);
-                    sendGameUpdates(update.toString());
+                    sendGameUpdates(update);
 
                 } else if (type.equals("rollback")) {
-                    for (Card c : new ArrayList<>(PlayedStack.getCards())) {
-                        PlayedStack.getCards().remove(c);
-                        Deck.put(c);
+                    for (Card c : new ArrayList<>(Main.getPlayedStack().getCards())) {
+                        Main.getPlayedStack().remove(c);
+                        Main.getDeck().put(c);
                     }
                     JsonObject update = new JsonObject();
                     update.addProperty("type", "rollback");
-                    update.add("deck", Deck.toJsonArray());
-                    sendGameUpdates(update.toString());
+                    update.add("deck", Main.getDeck().toJsonArray());
+                    sendGameUpdates(update);
                 } else if (type.equals("knock")) {
-                    sendGameUpdates(message.toString());
+                    sendGameUpdates(message);
                 } else if (type.equals("rub")) {
-                    sendGameUpdates(message.toString());
+                    sendGameUpdates(message);
                 } else if (type.equals("player_leave")) {
                     int leaveId = message.get("id").getAsInt();
-                    Main.setLastPlayerId(Main.getLastPlayerId() - 1);
-                    Hand hand = Main.getPlayers().get(leaveId);
-                    for (Card card : new ArrayList<>(hand.getCards())) {
-                        hand.remove(card);
-                        Deck.put(card);
-                    }
-                    Main.getPlayers().remove(leaveId);
-                    for (Hand h : Main.getPlayers()) {
-                        if (h.getId() > leaveId) {
-                            h.setId(h.getId() - 1);
-                        }
-                    }
-                    JsonObject update = new JsonObject();
-                    update.addProperty("type", "player_leave");
-                    update.addProperty("id", leaveId);
-                    update.add("deck", Deck.toJsonArray());
-                    sendGameUpdates(update.toString());
+                    kickPlayer(leaveId);
                 }
 
             } catch (Exception e) {
@@ -269,5 +230,26 @@ public class RabbitMQManager {
 
         channel.basicConsume(QUEUE_GAME_ACTION, true, deliver, consumerTag -> {});
     }
+
+    public static void kickPlayer(int leaveId) throws IOException {
+        Main.setLastPlayerId(Main.getLastPlayerId() - 1);
+        Hand hand = Main.getPlayers().get(leaveId);
+        for (Card card : new ArrayList<>(hand.getCards())) {
+            hand.remove(card);
+            Main.getDeck().put(card);
+        }
+        Main.getPlayers().remove(leaveId);
+        for (Hand h : Main.getPlayers()) {
+            if (h.getId() > leaveId) {
+                h.setId(h.getId() - 1);
+            }
+        }
+        JsonObject update = new JsonObject();
+        update.addProperty("type", "player_leave");
+        update.addProperty("id", leaveId);
+        update.add("deck", Main.getDeck().toJsonArray());
+        sendGameUpdates(update);
+    }
+
 
 }

@@ -3,21 +3,23 @@ package fr.antoninruan.maoserver;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import fr.antoninruan.maoserver.model.Card;
-import fr.antoninruan.maoserver.model.Deck;
-import fr.antoninruan.maoserver.model.Hand;
-import fr.antoninruan.maoserver.model.PlayedStack;
+import fr.antoninruan.maoserver.model.cardcontainer.Deck;
+import fr.antoninruan.maoserver.model.cardcontainer.Hand;
+import fr.antoninruan.maoserver.model.cardcontainer.PlayedStack;
 import fr.antoninruan.maoserver.utils.RabbitMQManager;
 import org.apache.commons.cli.*;
 
+import java.io.IOException;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.Scanner;
 
 public class Main {
 
     private static int lastPlayerId;
 
-    private static ArrayList<Hand> players = new ArrayList<>();
+    private static final ArrayList<Hand> players = new ArrayList<>();
+    private static final Deck deck = new Deck();
+    private static final PlayedStack playedStack = new PlayedStack();
 
     public static void main(String... args) {
 
@@ -45,7 +47,7 @@ public class Main {
 
         try {
             cmd = parser.parse(options, args);
-            Deck.init();
+            deck.init();
             RabbitMQManager.init(cmd.getOptionValue("h"), Integer.parseInt(cmd.getOptionValue("p")), cmd.getOptionValue("u"), cmd.getOptionValue("pw"));
 
             log("Server prêt");
@@ -120,6 +122,25 @@ public class Main {
                     formatter.printHelp("utility-name", gameInfo);
                 }
                 System.out.print("> ");
+            } else if (command[0].equals("kick")) {
+                Options kick = new Options();
+
+                Option id = new Option("i", "id", true, "The id of the player to kick");
+                id.setRequired(true);
+                kick.addOption(id);
+
+                try {
+                    CommandLine commandLine = parser.parse(kick, command);
+
+                    int i = Integer.parseInt(commandLine.getOptionValue("i"));
+                    RabbitMQManager.kickPlayer(i);
+                } catch (ParseException | NumberFormatException e) {
+                    formatter.printHelp("utility-name", kick);
+                    System.out.println("> ");
+                } catch (IOException e) {
+                    e.printStackTrace();
+                    System.out.println("> ");
+                }
             }
         }
     }
@@ -133,31 +154,31 @@ public class Main {
             player.addProperty("name", h.getName());
             array.add(player);
         }
-        System.out.println(array.toString());
+        System.out.println(array);
     }
 
     private static void displayDeck() {
         System.out.print("Deck: ");
         JsonArray deck = new JsonArray();
-        for (Card c : Deck.getCards()) {
+        for (Card c : Main.getDeck().getCards()) {
             JsonObject card = new JsonObject();
             card.addProperty("value", c.getValue().toString());
             card.addProperty("suit", c.getSuit().toString());
             deck.add(card);
         }
-        System.out.println(deck.toString());
+        System.out.println(deck);
     }
 
     private static void displayPlayed() {
         System.out.print("Played card: ");
         JsonArray playedStack = new JsonArray();
-        for (Card c : PlayedStack.getCards()) {
+        for (Card c : Main.getPlayedStack().getCards()) {
             JsonObject card = new JsonObject();
             card.addProperty("value", c.getValue().toString());
             card.addProperty("suit", c.getSuit().toString());
             playedStack.add(card);
         }
-        System.out.println(playedStack.toString());
+        System.out.println(playedStack);
     }
 
     public static ArrayList<Hand> getPlayers() {
@@ -174,6 +195,50 @@ public class Main {
 
     public static int nextPlayerId() {
         return lastPlayerId ++;
+    }
+
+    public static Deck getDeck() {
+        return deck;
+    }
+
+    public static PlayedStack getPlayedStack() {
+        return playedStack;
+    }
+
+    public static JsonObject getGameState() {
+        JsonObject object = new JsonObject();
+
+        object.add("deck", Main.getDeck().toJsonArray());
+
+        JsonArray playedStack = new JsonArray();
+        for (Card c : Main.getPlayedStack().getCards()) {
+            JsonObject card = new JsonObject();
+            card.addProperty("value", c.getValue().toString());
+            card.addProperty("suit", c.getSuit().toString());
+            playedStack.add(card);
+        }
+        object.add("played_stack", playedStack);
+
+        JsonArray players = new JsonArray();
+
+        for (Hand h : Main.getPlayers()) {
+            JsonObject player = new JsonObject();
+            player.addProperty("id", h.getId());
+            player.addProperty("name", h.getName());
+            JsonArray cards = new JsonArray();
+            for (Card c : h.getCards()) {
+                JsonObject card = new JsonObject();
+                card.addProperty("value", c.getValue().toString());
+                card.addProperty("suit", c.getSuit().toString());
+                cards.add(card);
+            }
+            player.add("cards", cards);
+            players.add(player);
+        }
+
+        object.add("players", players);
+
+        return object;
     }
 
 }

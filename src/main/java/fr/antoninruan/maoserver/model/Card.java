@@ -2,6 +2,7 @@ package fr.antoninruan.maoserver.model;
 
 
 
+import java.util.Objects;
 import java.util.Random;
 
 public class Card {
@@ -109,30 +110,22 @@ public class Card {
             this.n = n;
         }
 
-        public String getId() {
-            return id;
-        }
-
-        private int getN() {
+        public int getN() {
             return n;
         }
+    }
 
-        public static Value fromInt(int i) {
-            for (Value s : Value.values()) {
-                if (i == s.getN())
-                    return s;
-            }
-            return AS;
-        }
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        Card card = (Card) o;
+        return suit == card.suit && value == card.value;
+    }
 
-        public static Value fromId(String id) {
-            for(Value s : Value.values()) {
-                if (s.getId().equals(id))
-                    return s;
-            }
-            return AS;
-        }
-
+    @Override
+    public int hashCode() {
+        return (suit.getN() * 13) + value.getN();
     }
 
 }

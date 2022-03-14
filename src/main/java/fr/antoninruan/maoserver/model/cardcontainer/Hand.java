@@ -1,14 +1,15 @@
-package fr.antoninruan.maoserver.model;
+package fr.antoninruan.maoserver.model.cardcontainer;
+
+import fr.antoninruan.maoserver.model.Card;
 
 import java.util.ArrayList;
 
 
-public class Hand {
+public class Hand extends CardContainer {
 
     private int id;
 
     private String name;
-    private ArrayList<Card> keys = new ArrayList<>();
 
     public Hand(int id, String name) {
         this.id = id;
@@ -25,22 +26,6 @@ public class Hand {
 
     public String getName() {
         return name;
-    }
-
-    public ArrayList<Card> getCards() {
-        return keys;
-    }
-
-    public void add(Card card) {
-        keys.add(card);
-    }
-
-    public void remove(Card card) {
-        keys.remove(card);
-    }
-
-    public int getCardId(Card card) {
-        return keys.indexOf(card);
     }
 
     public Card getCard(int i) {
