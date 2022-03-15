@@ -145,82 +145,88 @@ public class RabbitMQManager {
                 JsonObject message = JsonParser.parseString(new String(delivery.getBody(), StandardCharsets.UTF_8)).getAsJsonObject();
                 Main.log("Receive: " + message.toString());
                 String type = message.get("type").getAsString();
-                if(type.equals("card_move")) {
-                    String dest = message.get("destination").getAsString();
-                    String from = message.get("source").getAsString();
-                    if(from.equals("deck")) {
-                        Card card = Main.getDeck().draw();
-                        if(card != null) {
-                            if(dest.equals("playedStack")) {
-                                Main.getPlayedStack().add(card);
-                            } else {
-                                int destId = Integer.parseInt(dest);
-                                Hand hand = Main.getPlayers().get(destId);
-                                hand.add(card);
+                switch (type) {
+                    case "card_move" -> {
+                        String dest = message.get("destination").getAsString();
+                        String from = message.get("source").getAsString();
+                        if (from.equals("deck")) {
+                            Card card = Main.getDeck().draw();
+                            if (card != null) {
+                                if (dest.equals("playedStack")) {
+                                    Main.getPlayedStack().add(card);
+                                } else {
+                                    int destId = Integer.parseInt(dest);
+                                    Hand hand = Main.getPlayers().get(destId);
+                                    hand.add(card);
+                                }
+                                message.add("moved_card", card.toJson());
+                                sendGameUpdates(message);
                             }
-                            sendGameUpdates(message);
-                        }
-                    } else if (from.equals("playedStack")) {
-                        Card card = Main.getPlayedStack().pickLastCard();
-                        if(card != null) {
-                            if(dest.equals("deck")) {
-                                Main.getDeck().put(card);
-                            } else {
-                                int destId = Integer.parseInt(dest);
-                                Hand hand = Main.getPlayers().get(destId);
-                                hand.add(card);
+                        } else if (from.equals("playedStack")) {
+                            Card card = Main.getPlayedStack().pickLastCard();
+                            if (card != null) {
+                                if (dest.equals("deck")) {
+                                    Main.getDeck().put(card);
+                                } else {
+                                    int destId = Integer.parseInt(dest);
+                                    Hand hand = Main.getPlayers().get(destId);
+                                    hand.add(card);
+                                }
+                                message.add("moved_card", card.toJson());
+                                sendGameUpdates(message);
                             }
-                            sendGameUpdates(message);
-                        }
-                    } else {
-                        Hand hand = Main.getPlayers().get(Integer.parseInt(from));
-                        Card card = hand.getCard(message.get("card_id").getAsInt());
-                        if(dest.equals("deck")) {
-                            Main.getDeck().put(card);
-                            sendGameUpdates(message);
-                            hand.remove(card);
-                        } else if (dest.equals("playedStack")) {
-                            Main.getPlayedStack().add(card);
-                            sendGameUpdates(message);
-                            hand.remove(card);
                         } else {
-                            int destId = Integer.parseInt(dest);
-                            Hand target = Main.getPlayers().get(destId);
-                            target.add(card);
-                            sendGameUpdates(message);
-                            hand.remove(card);
+                            Hand hand = Main.getPlayers().get(Integer.parseInt(from));
+                            Card card = hand.getCard(message.get("card_id").getAsInt());
+                            if (dest.equals("deck")) {
+                                Main.getDeck().put(card);
+                                message.add("moved_card", card.toJson());
+                                sendGameUpdates(message);
+                                hand.remove(card);
+                            } else if (dest.equals("playedStack")) {
+                                Main.getPlayedStack().add(card);
+                                message.add("moved_card", card.toJson());
+                                sendGameUpdates(message);
+                                hand.remove(card);
+                            } else {
+                                int destId = Integer.parseInt(dest);
+                                Hand target = Main.getPlayers().get(destId);
+                                target.add(card);
+                                message.add("moved_card", card.toJson());
+                                sendGameUpdates(message);
+                                hand.remove(card);
+                            }
                         }
                     }
-                } else if(type.equals("shuffle")) {
-                    Main.getDeck().shuffle();
-                    JsonObject update = new JsonObject();
-                    update.addProperty("type", "shuffle");
-                    JsonArray deck = new JsonArray();
-                    for (Card c : Main.getDeck().getCards()) {
-                        JsonObject card = new JsonObject();
-                        card.addProperty("value", c.getValue().toString());
-                        card.addProperty("suit", c.getSuit().toString());
-                        deck.add(card);
+                    case "shuffle" -> {
+                        Main.getDeck().shuffle();
+                        JsonObject update = new JsonObject();
+                        update.addProperty("type", "shuffle");
+                        JsonArray deck = new JsonArray();
+                        for (Card c : Main.getDeck().getCards()) {
+                            JsonObject card = new JsonObject();
+                            card.addProperty("value", c.getValue().toString());
+                            card.addProperty("suit", c.getSuit().toString());
+                            deck.add(card);
+                        }
+                        update.add("deck", deck);
+                        sendGameUpdates(update);
                     }
-                    update.add("deck", deck);
-                    sendGameUpdates(update);
-
-                } else if (type.equals("rollback")) {
-                    for (Card c : new ArrayList<>(Main.getPlayedStack().getCards())) {
-                        Main.getPlayedStack().remove(c);
-                        Main.getDeck().put(c);
+                    case "rollback" -> {
+                        for (Card c : new ArrayList<>(Main.getPlayedStack().getCards())) {
+                            Main.getPlayedStack().remove(c);
+                            Main.getDeck().put(c);
+                        }
+                        JsonObject update = new JsonObject();
+                        update.addProperty("type", "rollback");
+                        update.add("deck", Main.getDeck().toJsonArray());
+                        sendGameUpdates(update);
                     }
-                    JsonObject update = new JsonObject();
-                    update.addProperty("type", "rollback");
-                    update.add("deck", Main.getDeck().toJsonArray());
-                    sendGameUpdates(update);
-                } else if (type.equals("knock")) {
-                    sendGameUpdates(message);
-                } else if (type.equals("rub")) {
-                    sendGameUpdates(message);
-                } else if (type.equals("player_leave")) {
-                    int leaveId = message.get("id").getAsInt();
-                    kickPlayer(leaveId);
+                    case "knock", "rub" -> sendGameUpdates(message);
+                    case "player_leave" -> {
+                        int leaveId = message.get("id").getAsInt();
+                        kickPlayer(leaveId);
+                    }
                 }
 
             } catch (Exception e) {

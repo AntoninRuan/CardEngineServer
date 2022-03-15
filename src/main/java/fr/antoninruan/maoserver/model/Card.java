@@ -2,6 +2,8 @@ package fr.antoninruan.maoserver.model;
 
 
 
+import com.google.gson.JsonObject;
+
 import java.util.Objects;
 import java.util.Random;
 
@@ -35,6 +37,13 @@ public class Card {
 
     public boolean isFaceCard() {
         return (this.value == Value.KING) || (this.value == Value.QUEEN) || (this.value == Value.JACK);
+    }
+
+    public JsonObject toJson() {
+        JsonObject object = new JsonObject();
+        object.addProperty("suit", suit.toString());
+        object.addProperty("value", value.toString());
+        return object;
     }
 
     @Override
