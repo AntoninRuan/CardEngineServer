@@ -34,7 +34,7 @@ public class RabbitMQManager {
         factory.setUsername(user);
         factory.setPassword(password);
         factory.setAutomaticRecoveryEnabled(true);
-        factory.setVirtualHost("card_engine");
+//        factory.setVirtualHost("card_engine");
         try {
             connection = factory.newConnection();
             channel = connection.createChannel();
@@ -73,20 +73,13 @@ public class RabbitMQManager {
     }
 
     public static void sendGameUpdates(JsonObject update) throws IOException {
-        JsonObject hashes = new JsonObject();
-        hashes.addProperty("deck", Main.getDeck().hashCode());
-        hashes.addProperty("played_stack", Main.getPlayedStack().hashCode());
-        for(Hand h : Main.getPlayers()) {
-            hashes.addProperty(Integer.toString(h.getId()), h.hashCode());
-        }
-        update.add("hashes", hashes);
-        Main.log("Sending: " + update);
+        System.out.println("Sending: " + update);
         channel.basicPublish(EXCHANGE_GAME_UPDATES, "", null, update.toString().getBytes(StandardCharsets.UTF_8));
     }
 
     private static void listenConnection() throws IOException {
         DeliverCallback deliverCallback = (consumerTag, delivery) -> {
-            Main.log("Connection received");
+            System.out.println("Connection received");
             AMQP.BasicProperties replyProps = new AMQP.BasicProperties
                     .Builder()
                     .correlationId(delivery.getProperties().getCorrelationId())
@@ -119,7 +112,7 @@ public class RabbitMQManager {
             } catch (RuntimeException e) {
                 e.printStackTrace();
             } finally {
-                Main.log("Sending: " + response);
+                System.out.println("Sending: " + response);
                 channel.basicPublish("", delivery.getProperties().getReplyTo(), replyProps, response.getBytes(StandardCharsets.UTF_8));
                 channel.basicAck(delivery.getEnvelope().getDeliveryTag(), false);
                 final ScheduledThreadPoolExecutor executor = new ScheduledThreadPoolExecutor(1);
@@ -143,7 +136,7 @@ public class RabbitMQManager {
         DeliverCallback deliver = (consumerTag, delivery) -> {
             try {
                 JsonObject message = JsonParser.parseString(new String(delivery.getBody(), StandardCharsets.UTF_8)).getAsJsonObject();
-                Main.log("Receive: " + message.toString());
+                System.out.println("Receive: " + message.toString());
                 String type = message.get("type").getAsString();
                 switch (type) {
                     case "card_move" -> {
