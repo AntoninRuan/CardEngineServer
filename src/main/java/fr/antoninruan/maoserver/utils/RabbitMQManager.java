@@ -6,9 +6,7 @@ import com.google.gson.JsonParser;
 import com.rabbitmq.client.*;
 import fr.antoninruan.maoserver.Main;
 import fr.antoninruan.maoserver.model.Card;
-import fr.antoninruan.maoserver.model.cardcontainer.Deck;
 import fr.antoninruan.maoserver.model.cardcontainer.Hand;
-import fr.antoninruan.maoserver.model.cardcontainer.PlayedStack;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -21,8 +19,9 @@ public class RabbitMQManager {
 
     private static final String EXCHANGE_GAME_UPDATES = "game_updates";
     private static final String QUEUE_GAME_ACTION = "game_actions";
+    private static final String EXCHANGE_CHAT_UPDATE = "chat_update";
+    private static final String QUEUE_MESSAGE_SENDING = "message_sending";
     private static final String RPC_QUEUE_CONNECTION = "connection_queue";
-    private static final String RPC_QUEUE_SYNCHRONIZATION = "synchronization_queue";
 
     private static Channel channel;
     private static Connection connection;
@@ -44,16 +43,17 @@ public class RabbitMQManager {
                 }
             });
             channel.exchangeDeclare(EXCHANGE_GAME_UPDATES, "fanout");
+            channel.exchangeDeclare(EXCHANGE_CHAT_UPDATE, "fanout");
             channel.queueDeclare(QUEUE_GAME_ACTION, true, false, false, null);
+            channel.queueDeclare(QUEUE_MESSAGE_SENDING, true, false, false, null);
             channel.queueDeclare(RPC_QUEUE_CONNECTION, false, false, false, null);
-            channel.queueDeclare(RPC_QUEUE_SYNCHRONIZATION, false, false, false, null);
-            channel.queuePurge(RPC_QUEUE_SYNCHRONIZATION);
             channel.queuePurge(RPC_QUEUE_CONNECTION);
             channel.queuePurge(QUEUE_GAME_ACTION);
+            channel.queuePurge(QUEUE_MESSAGE_SENDING);
 
             listenGameActions();
-//            listenSyncRequest();
             listenConnection();
+            listenMessageSending();
         } catch (AuthenticationFailureException e) {
             e.printStackTrace();
             System.exit(-1);
@@ -72,9 +72,14 @@ public class RabbitMQManager {
         }
     }
 
-    public static void sendGameUpdates(JsonObject update) throws IOException {
-        System.out.println("Sending: " + update);
+    public static void sendGameUpdate(JsonObject update) throws IOException {
+        System.out.println("Sending: (GameUpdate) " + update);
         channel.basicPublish(EXCHANGE_GAME_UPDATES, "", null, update.toString().getBytes(StandardCharsets.UTF_8));
+    }
+
+    public static void sendChatUpdate(JsonObject update) throws IOException {
+        System.out.println("Sending: (ChatUpdate) " + update);
+        channel.basicPublish(EXCHANGE_CHAT_UPDATE, "", null, update.toString().getBytes(StandardCharsets.UTF_8));
     }
 
     private static void listenConnection() throws IOException {
@@ -132,11 +137,10 @@ public class RabbitMQManager {
     }
 
     private static void listenGameActions() throws IOException {
-
         DeliverCallback deliver = (consumerTag, delivery) -> {
             try {
                 JsonObject message = JsonParser.parseString(new String(delivery.getBody(), StandardCharsets.UTF_8)).getAsJsonObject();
-                System.out.println("Receive: " + message.toString());
+                System.out.println("Receive: (GameAction)" + message.toString());
                 String type = message.get("type").getAsString();
                 switch (type) {
                     case "card_move" -> {
@@ -153,7 +157,7 @@ public class RabbitMQManager {
                                     hand.add(card);
                                 }
                                 message.add("moved_card", card.toJson());
-                                sendGameUpdates(message);
+                                sendGameUpdate(message);
                             }
                         } else if (from.equals("playedStack")) {
                             Card card = Main.getPlayedStack().pickLastCard();
@@ -166,7 +170,7 @@ public class RabbitMQManager {
                                     hand.add(card);
                                 }
                                 message.add("moved_card", card.toJson());
-                                sendGameUpdates(message);
+                                sendGameUpdate(message);
                             }
                         } else {
                             Hand hand = Main.getPlayers().get(Integer.parseInt(from));
@@ -174,19 +178,19 @@ public class RabbitMQManager {
                             if (dest.equals("deck")) {
                                 Main.getDeck().put(card);
                                 message.add("moved_card", card.toJson());
-                                sendGameUpdates(message);
+                                sendGameUpdate(message);
                                 hand.remove(card);
                             } else if (dest.equals("playedStack")) {
                                 Main.getPlayedStack().add(card);
                                 message.add("moved_card", card.toJson());
-                                sendGameUpdates(message);
+                                sendGameUpdate(message);
                                 hand.remove(card);
                             } else {
                                 int destId = Integer.parseInt(dest);
                                 Hand target = Main.getPlayers().get(destId);
                                 target.add(card);
                                 message.add("moved_card", card.toJson());
-                                sendGameUpdates(message);
+                                sendGameUpdate(message);
                                 hand.remove(card);
                             }
                         }
@@ -203,7 +207,7 @@ public class RabbitMQManager {
                             deck.add(card);
                         }
                         update.add("deck", deck);
-                        sendGameUpdates(update);
+                        sendGameUpdate(update);
                     }
                     case "rollback" -> {
                         for (Card c : new ArrayList<>(Main.getPlayedStack().getCards())) {
@@ -213,9 +217,9 @@ public class RabbitMQManager {
                         JsonObject update = new JsonObject();
                         update.addProperty("type", "rollback");
                         update.add("deck", Main.getDeck().toJsonArray());
-                        sendGameUpdates(update);
+                        sendGameUpdate(update);
                     }
-                    case "knock", "rub" -> sendGameUpdates(message);
+                    case "knock", "rub" -> sendGameUpdate(message);
                     case "player_leave" -> {
                         int leaveId = message.get("id").getAsInt();
                         kickPlayer(leaveId);
@@ -228,6 +232,20 @@ public class RabbitMQManager {
         };
 
         channel.basicConsume(QUEUE_GAME_ACTION, true, deliver, consumerTag -> {});
+    }
+
+    private static void listenMessageSending() throws IOException {
+        DeliverCallback deliver = (consumerTag, delivery) -> {
+            try {
+                JsonObject object = JsonParser.parseString(new String(delivery.getBody(), StandardCharsets.UTF_8)).getAsJsonObject();
+                System.out.println("Receive: (ChatMessage) " + object.toString());
+                sendChatUpdate(object);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        };
+
+        channel.basicConsume(QUEUE_MESSAGE_SENDING, true, deliver, consumerTag ->  {});
     }
 
     public static void kickPlayer(int leaveId) throws IOException {
@@ -247,7 +265,7 @@ public class RabbitMQManager {
         update.addProperty("type", "player_leave");
         update.addProperty("id", leaveId);
         update.add("deck", Main.getDeck().toJsonArray());
-        sendGameUpdates(update);
+        sendGameUpdate(update);
     }
 
 

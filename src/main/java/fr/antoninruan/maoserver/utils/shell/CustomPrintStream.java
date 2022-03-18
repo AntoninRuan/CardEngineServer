@@ -8,25 +8,30 @@ import java.nio.charset.Charset;
 public class CustomPrintStream extends PrintStream {
 
     private final LineReader lineReader;
+    private final String prefix;
 
-    public CustomPrintStream(OutputStream out, LineReader lineReader) {
+    public CustomPrintStream(OutputStream out, LineReader lineReader, String prefix) {
         super(out);
         this.lineReader = lineReader;
+        this.prefix = prefix;
     }
 
-    public CustomPrintStream(OutputStream out, boolean autoFlush, LineReader lineReader) {
+    public CustomPrintStream(OutputStream out, boolean autoFlush, LineReader lineReader, String prefix) {
         super(out, autoFlush);
         this.lineReader = lineReader;
+        this.prefix = prefix;
     }
 
-    public CustomPrintStream(OutputStream out, boolean autoFlush, String encoding, LineReader lineReader) throws UnsupportedEncodingException {
+    public CustomPrintStream(OutputStream out, boolean autoFlush, String encoding, LineReader lineReader, String prefix) throws UnsupportedEncodingException {
         super(out, autoFlush, encoding);
         this.lineReader = lineReader;
+        this.prefix = prefix;
     }
 
-    public CustomPrintStream(OutputStream out, boolean autoFlush, Charset charset, LineReader lineReader) {
+    public CustomPrintStream(OutputStream out, boolean autoFlush, Charset charset, LineReader lineReader, String prefix) {
         super(out, autoFlush, charset);
         this.lineReader = lineReader;
+        this.prefix = prefix;
     }
 
     @Override
@@ -72,46 +77,46 @@ public class CustomPrintStream extends PrintStream {
 
     @Override
     public void println(boolean x) {
-        lineReader.printAbove(Boolean.toString(x));
+        lineReader.printAbove(prefix + ": " + x);
     }
 
     @Override
     public void println(char x) {
-        lineReader.printAbove(Character.toString(x));
+        lineReader.printAbove(prefix + ": " + x);
     }
 
     @Override
     public void println(int x) {
-        lineReader.printAbove(Integer.toString(x));
+        lineReader.printAbove(prefix + ": " + x);
     }
 
     @Override
     public void println(long x) {
-        lineReader.printAbove(Long.toString(x));
+        lineReader.printAbove(prefix + ": " + x);
     }
 
     @Override
     public void println(float x) {
-        lineReader.printAbove(Float.toString(x));
+        lineReader.printAbove(prefix + ": " + x);
     }
 
     @Override
     public void println(double x) {
-        lineReader.printAbove(Double.toString(x));
+        lineReader.printAbove(prefix + ": " + x);
     }
 
     @Override
     public void println(char[] x) {
-        lineReader.printAbove(new String(x));
+        lineReader.printAbove(prefix + ": " + new String(x));
     }
 
     @Override
     public void println(String x) {
-        lineReader.printAbove(x);
+        lineReader.printAbove(prefix + ": " + x);
     }
 
     @Override
     public void println(Object x) {
-        lineReader.printAbove(x.toString());
+        lineReader.printAbove(prefix + ": " + x.toString());
     }
 }

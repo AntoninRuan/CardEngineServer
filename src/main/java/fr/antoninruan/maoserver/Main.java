@@ -62,7 +62,7 @@ public class Main {
             Terminal terminal = TerminalBuilder.builder().name("mao-server").build();
             LineReader lineReader = LineReaderBuilder.builder().terminal(terminal).build();
 
-            CustomPrintStream printStream = new CustomPrintStream(System.out, lineReader);
+            CustomPrintStream printStream = new CustomPrintStream(System.out, lineReader, "[MaoServer]");
             System.setOut(printStream);
 
             while (!stop) {
