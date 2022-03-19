@@ -6,7 +6,9 @@ import fr.antoninruan.maoserver.model.Card;
 import fr.antoninruan.maoserver.model.cardcontainer.Deck;
 import fr.antoninruan.maoserver.model.cardcontainer.Hand;
 import fr.antoninruan.maoserver.model.cardcontainer.PlayedStack;
+import fr.antoninruan.maoserver.utils.Emote;
 import fr.antoninruan.maoserver.utils.RabbitMQManager;
+import fr.antoninruan.maoserver.utils.WebServer;
 import fr.antoninruan.maoserver.utils.shell.CommandHandler;
 import fr.antoninruan.maoserver.utils.shell.CustomPrintStream;
 import org.apache.commons.cli.*;
@@ -15,6 +17,7 @@ import org.jline.reader.LineReaderBuilder;
 import org.jline.terminal.Terminal;
 import org.jline.terminal.TerminalBuilder;
 
+import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Scanner;
@@ -48,6 +51,10 @@ public class Main {
         password.setRequired(true);
         options.addOption(password);
 
+        Option webserveradress = new Option("wh", "web-server-host", true, "WebServer Host");
+        webserveradress.setRequired(true);
+        options.addOption(webserveradress);
+
         CommandLineParser parser = new DefaultParser();
         HelpFormatter formatter = new HelpFormatter();
         CommandLine cmd;
@@ -58,6 +65,10 @@ public class Main {
             RabbitMQManager.init(cmd.getOptionValue("h"), Integer.parseInt(cmd.getOptionValue("p")), cmd.getOptionValue("u"), cmd.getOptionValue("pw"));
 
             System.out.println("Server prêt");
+
+            WebServer.startWebServer(cmd.getOptionValue("wh"));
+
+            loadEmotes();
 
             Terminal terminal = TerminalBuilder.builder().name("mao-server").build();
             LineReader lineReader = LineReaderBuilder.builder().terminal(terminal).build();
@@ -74,6 +85,7 @@ public class Main {
             }
 
             RabbitMQManager.close();
+            WebServer.stopWebServer();
             System.exit(0);
 
         } catch (ParseException e) {
@@ -95,6 +107,20 @@ public class Main {
     public static ArrayList<Hand> getPlayers() {
         return players;
     }
+
+    private static void loadEmotes() {
+        File file = new File("");
+        File emotes = new File(file.getAbsolutePath() + "/emotes/");
+
+        for (File children : emotes.listFiles()) {
+            if(children.isFile() && children.getName().endsWith(".png")) {
+                String name = children.getName().substring(0, children.getName().length() - 4);
+                Emote.getEmotes().add(new Emote(name));
+            }
+        }
+        System.out.println(Emote.getEmotes().size() + " emotes enregistrées");
+    }
+
 
     public static void setLastPlayerId(int lastPlayerId) {
         Main.lastPlayerId = lastPlayerId;

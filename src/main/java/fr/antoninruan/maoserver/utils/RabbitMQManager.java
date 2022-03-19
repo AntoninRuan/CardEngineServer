@@ -33,7 +33,7 @@ public class RabbitMQManager {
         factory.setUsername(user);
         factory.setPassword(password);
         factory.setAutomaticRecoveryEnabled(true);
-//        factory.setVirtualHost("card_engine");
+        factory.setVirtualHost("card_engine");
         try {
             connection = factory.newConnection();
             channel = connection.createChannel();
@@ -108,6 +108,13 @@ public class RabbitMQManager {
 
                     JsonObject object = Main.getGameState();
                     object.addProperty("id", hand.getId());
+
+                    JsonArray emotes = new JsonArray();
+                    for (Emote e : Emote.getEmotes()) {
+                        emotes.add(e.toJson());
+                    }
+
+                    object.add("emotes", emotes);
 
                     Main.getPlayers().add(hand);
 
